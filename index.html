@@ -31,9 +31,8 @@
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, collection, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Firebase設定の初期化
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        // 環境変数からFirebase Configを取得
+        
         let firebaseConfig = {};
         try {
             if (typeof __firebase_config !== 'undefined' && __firebase_config) {
@@ -43,9 +42,8 @@
             console.error("Failed to parse firebase config:", e);
         }
 
-        setLogLevel('Debug');
+        setLogLevel('debug');
         
-        // グローバル変数として保持
         window.app = null;
         window.db = null;
         window.auth = null;
@@ -53,11 +51,18 @@
         window.isAuthReady = false;
 
         if (Object.keys(firebaseConfig).length > 0) {
-            window.app = initializeApp(firebaseConfig);
-            window.db = getFirestore(window.app);
-            window.auth = getAuth(window.app);
+            try {
+                window.app = initializeApp(firebaseConfig);
+                window.db = getFirestore(window.app);
+                window.auth = getAuth(window.app);
+                console.log('Firebase initialized successfully');
+            } catch (e) {
+                console.error('Firebase initialization failed:', e);
+                alert('Firebase設定エラー: ' + e.message + '\n\n環境変数を確認してください。');
+            }
         } else {
             console.error("Firebase config is missing. Database functionality will not work.");
+            alert('Firebase設定が見つかりません。\n\nNetlify環境変数に__firebase_configを設定してください。\n詳細はSETUP.mdを参照してください。');
         }
 
 
@@ -110,23 +115,29 @@
                 return null;
             }
 
-            // Publicデータとして保存: /artifacts/{appId}/public/data/manifests/{docId}
             const manifestsCollection = collection(window.db, 'artifacts', appId, 'public', 'data', 'manifests');
             
-            // ドキュメントIDをランダムに生成 (短いIDにするため)
-            const docId = Math.random().toString(36).substring(2, 9); // 7文字のランダムな英数字
+            const docId = Math.random().toString(36).substring(2, 9);
 
             try {
                 const docRef = doc(manifestsCollection, docId);
                 await setDoc(docRef, {
                     ...data,
-                    // メタデータとしてユーザーIDと作成日時も保存
                     createdBy: window.userId, 
                     createdAt: new Date().toISOString()
                 });
-                return docId; // 生成された短いIDを返す
+                console.log('Manifest saved successfully with ID:', docId);
+                return docId;
             } catch (e) {
                 console.error("Error saving document:", e);
+                console.error("Error details:", {
+                    code: e.code,
+                    message: e.message,
+                    appId: appId,
+                    userId: window.userId,
+                    hasDb: !!window.db,
+                    hasAuth: !!window.auth
+                });
                 return null;
             }
         };

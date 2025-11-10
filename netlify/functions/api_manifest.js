@@ -16,55 +16,57 @@ const admin = require('firebase-admin');
 const { getFirestore } = require('firebase-admin/firestore');
 const { getApp, initializeApp, getApps } = admin;
 
-// 環境変数からFirebase設定を読み込む（Netlify環境を想定）
-const FIREBASE_CONFIG = {
-    // 実際のNetlify環境では環境変数を設定してください
-    // projectId: process.env.FIREBASE_PROJECT_ID, 
-    // clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    // privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'), // \nを改行コードに置換
-    // 注: この環境ではAdmin SDKの設定が難しいため、デモとして設定を省略しますが、
-    // 実際に運用する場合は上記のようにAdmin SDKを初期化する必要があります。
-};
+const appId = process.env.FIREBASE_APP_ID || 'default-app-id';
 
-// サーバーレス環境でのAdmin SDKの初期化
+let db = null;
+
 if (!getApps().length) {
-    // Admin SDKの初期化が成功したと仮定します
-    // try {
-    //     initializeApp({
-    //         credential: admin.credential.cert(FIREBASE_CONFIG)
-    //     });
-    // } catch (e) {
-    //     console.error("Firebase Admin initialization failed:", e);
-    // }
-}
+    try {
+        const projectId = process.env.FIREBASE_PROJECT_ID;
+        const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+        const privateKey = process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : null;
 
-// データベースインスタンスの仮取得 (実際にはAdmin SDKで初期化されたインスタンスを使用)
-// const db = getFirestore();
-
-// === 仮のデータベース読み込み関数 (Admin SDKがない環境向け) ===
-// 開発環境のCanvasではAdmin SDKが使えないため、ここではデモデータで応答します。
-// 実際にNetlifyにデプロイする際は、上記のAdmin SDK初期化とdbインスタンスを使用してください。
-async function fetchManifestData(id) {
-    // Netlify Functionsでは、Admin SDKとFirestoreを使用してデータを取得します
-    // const docRef = db.collection('artifacts').doc('YOUR_APP_ID').collection('public').doc('data').collection('manifests').doc(id);
-    // const doc = await docRef.get();
-    // if (!doc.exists) {
-    //     return null;
-    // }
-    // return doc.data();
-
-    // デモ応答 (一時的な措置)
-    if (id === 'demo123') {
-        return {
-            ipaUrl: 'https://example.com/downloads/my_app.ipa',
-            bundleId: 'com.sample.testapp',
-            version: '1.0',
-            appName: 'テストアプリ'
-        };
+        if (projectId && clientEmail && privateKey) {
+            initializeApp({
+                credential: admin.credential.cert({
+                    projectId,
+                    clientEmail,
+                    privateKey
+                })
+            });
+            db = getFirestore();
+            console.log('Firebase Admin SDK initialized successfully');
+        } else {
+            console.error('Firebase Admin SDK configuration is incomplete. Required environment variables: FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY');
+        }
+    } catch (e) {
+        console.error("Firebase Admin initialization failed:", e);
     }
-    return null;
+} else {
+    db = getFirestore();
 }
-// === ここまで仮のデータベース読み込み関数 ===
+
+async function fetchManifestData(id) {
+    if (!db) {
+        console.error('Firestore is not initialized');
+        return null;
+    }
+
+    try {
+        const docRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('manifests').doc(id);
+        const doc = await docRef.get();
+        
+        if (!doc.exists) {
+            console.log(`Document not found for ID: ${id}`);
+            return null;
+        }
+        
+        return doc.data();
+    } catch (error) {
+        console.error('Error fetching manifest data:', error);
+        return null;
+    }
+}
 
 
 // PLIST XML 生成関数 (HTMLファイルと同じロジック)
