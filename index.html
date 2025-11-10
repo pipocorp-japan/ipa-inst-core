@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IPA OTA リンクジェネレーター (Serverless対応)</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Configure Tailwind to use the Inter font -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f7f9;
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8 min-h-screen flex items-center justify-center">
+
+    <div class="w-full max-w-2xl bg-white p-6 sm:p-10 rounded-xl shadow-2xl border border-gray-100">
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl sm:text-4xl font-extrabold text-gray-900 mb-2">
+                IPA OTA サーバーレスリンク生成
+            </h1>
+            <p class="text-gray-500">
+                アプリ情報とAPIのURLから、インストールリンクを動的に生成します。
+            </p>
+        </header>
+
+        <!-- アプリ情報入力フォーム -->
+        <section class="mb-8 p-6 bg-indigo-50 rounded-xl border border-indigo-200">
+            <h2 class="text-xl font-bold text-indigo-700 mb-4">アプリ情報入力</h2>
+            <div class="space-y-4">
+                <div>
+                    <label for="ipaUrl" class="block text-sm font-medium text-gray-700">IPA ファイルの HTTPS URL</label>
+                    <input type="url" id="ipaUrl" placeholder="例: https://yourdomain.com/app/v1.0.ipa"
+                           class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-3"
+                           value="https://yourdomain.com/path/to/app.ipa" required>
+                </div>
+                <div>
+                    <label for="bundleId" class="block text-sm font-medium text-gray-700">バンドルID (Bundle Identifier)</label>
+                    <input type="text" id="bundleId" placeholder="例: com.yourcompany.yourapp"
+                           class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-3"
+                           value="com.example.MyApp" required>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label for="version" class="block text-sm font-medium text-gray-700">バージョン (例: 1.0)</label>
+                        <input type="text" id="version" placeholder="例: 1.0"
+                               class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-3"
+                               value="1.0" required>
+                    </div>
+                    <div>
+                        <label for="appName" class="block text-sm font-medium text-gray-700">アプリケーション名</label>
+                        <input type="text" id="appName" placeholder="例: My Awesome App"
+                               class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-3"
+                               value="My Test App" required>
+                    </div>
+                </div>
+            </div>
+            
+            <h2 class="text-xl font-bold text-indigo-700 mt-6 mb-4 border-t pt-4">API ホスト情報 (Step 1.5)</h2>
+            <div>
+                <label for="apiBaseUrl" class="block text-sm font-medium text-gray-700">デプロイ後の API ベース URL</label>
+                <input
+                    id="apiBaseUrl"
+                    type="url"
+                    placeholder="例: https://yourapp.vercel.app/api/manifest"
+                    class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-3"
+                    value="https://your-deployment-url/api/manifest" required
+                />
+            </div>
+
+            <button id="generateButton"
+                    class="mt-6 w-full py-3 bg-indigo-600 text-white font-bold text-lg rounded-xl shadow-lg hover:bg-indigo-700 transition duration-300 transform hover:scale-[1.005] active:scale-[0.995]">
+                インストールリンクを生成
+            </button>
+        </section>
+
+        <!-- 結果表示エリア -->
+        <section id="resultsSection" class="hidden">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4 border-b pb-2">生成結果 (Step 2)</h2>
+
+            <!-- 最終的なインストール用 URL -->
+            <div class="mb-8 p-5 bg-green-50 rounded-xl border border-green-200">
+                <h3 class="text-lg font-bold text-green-800 mb-3">
+                    最終的なインストールリンク
+                </h3>
+                <p class="text-sm text-gray-700 mb-4">
+                    このURLは、入力された情報に基づいて **動的にPLISTを生成するAPI** を指します。
+                </p>
+
+                <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
+                    <input
+                        id="finalInstallUrlOutput"
+                        type="text"
+                        readonly
+                        class="flex-1 p-3 border border-gray-300 rounded-lg bg-white text-sm font-mono"
+                        value=""
+                    />
+                    <button
+                        id="copyInstallUrlButton"
+                        class="px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition duration-150 flex-shrink-0 text-sm font-medium"
+                    >
+                        URLをコピー
+                    </button>
+                </div>
+                <p id="copyInstallUrlMessage" class="mt-2 text-sm text-green-600 hidden">インストールURLがコピーされました！</p>
+
+
+                <!-- 実行ボタン (テスト用) -->
+                <div class="text-center mt-6">
+                    <a
+                        id="installLink"
+                        href="#"
+                        class="inline-block w-full sm:w-auto px-8 py-3 bg-red-600 text-white font-bold text-lg rounded-xl shadow-lg hover:bg-red-700 transition duration-300 transform hover:scale-[1.02] active:scale-[0.98]"
+                        target="_blank"
+                    >
+                        インストールを試す (iOSでタップ)
+                    </a>
+                    <p class="mt-2 text-xs text-gray-400">（このリンクをiOSデバイスで開いてください）</p>
+                </div>
+            </div>
+        </section>
+
+    </div>
+
+    <script>
+        // PLIST XML 生成関数 (この関数はAPI側でも使用されます)
+        function generatePlist(ipaUrl, bundleId, version, appName) {
+            const escapeXml = (str) => {
+                return str.replace(/[&<>"']/g, function(match) {
+                    return ({
+                        '&': '&amp;',
+                        '<': '&lt;',
+                        '>': '&gt;',
+                        '"': '&quot;',
+                        "'": '&apos;'
+                    })[match];
+                });
+            };
+
+            const escapedIpaUrl = escapeXml(ipaUrl);
+            const escapedBundleId = escapeXml(bundleId);
+            const escapedVersion = escapeXml(version);
+            const escapedAppName = escapeXml(appName);
+
+            return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>items</key>
+	<array>
+		<dict>
+			<key>assets</key>
+			<array>
+				<dict>
+					<key>kind</key>
+					<string>software-package</string>
+					<key>url</key>
+					<string>${escapedIpaUrl}</string>
+				</dict>
+			</array>
+			<key>metadata</key>
+			<dict>
+				<key>bundle-identifier</key>
+				<string>${escapedBundleId}</string>
+				<key>bundle-version</key>
+				<string>${escapedVersion}</string>
+				<key>kind</key>
+				<string>software</string>
+				<key>title</key>
+				<string>${escapedAppName}</string>
+			</dict>
+		</dict>
+	</array>
+</dict>
+</plist>`;
+        }
+
+        // URLコピー処理（汎用）
+        function setupCopyButton(buttonId, contentId, messageId) {
+            document.getElementById(buttonId).addEventListener('click', function() {
+                const contentElement = document.getElementById(contentId);
+                const copyMessage = document.getElementById(messageId);
+
+                let contentToCopy = contentElement.value;
+                
+                if (contentId === 'finalInstallUrlOutput' && !contentToCopy.includes('itms-services')) {
+                     copyMessage.textContent = '先に全ての項目を入力し、リンクを生成してください。';
+                     copyMessage.classList.remove('hidden', 'text-green-600');
+                     copyMessage.classList.add('block', 'text-red-600');
+                     setTimeout(() => {
+                         copyMessage.classList.remove('block', 'text-red-600');
+                         copyMessage.classList.add('hidden', 'text-green-600');
+                     }, 3000);
+                     return;
+                }
+
+                const tempTextArea = document.createElement('textarea');
+                tempTextArea.value = contentToCopy;
+                document.body.appendChild(tempTextArea);
+                tempTextArea.select();
+                tempTextArea.setSelectionRange(0, 99999);
+
+                let successful = false;
+                try {
+                    successful = document.execCommand('copy');
+                } catch (err) {
+                    console.error('Copy failed:', err);
+                }
+                
+                document.body.removeChild(tempTextArea);
+
+                if (successful) {
+                    copyMessage.textContent = 'URLがコピーされました！';
+                    copyMessage.classList.remove('hidden', 'text-red-600');
+                    copyMessage.classList.add('block', 'text-green-600');
+                    setTimeout(() => {
+                        copyMessage.classList.remove('block');
+                        copyMessage.classList.add('hidden');
+                    }, 2000);
+                } else {
+                    copyMessage.textContent = 'コピーに失敗しました。';
+                    copyMessage.classList.remove('hidden', 'text-green-600');
+                    copyMessage.classList.add('block', 'text-red-600');
+                    setTimeout(() => {
+                        copyMessage.classList.remove('block', 'text-red-600');
+                        copyMessage.classList.add('hidden', 'text-green-600');
+                    }, 3000);
+                }
+            });
+        }
+
+        function generateInstallLink() {
+            const ipaUrl = document.getElementById('ipaUrl').value.trim();
+            const bundleId = document.getElementById('bundleId').value.trim();
+            const version = document.getElementById('version').value.trim();
+            const appName = document.getElementById('appName').value.trim();
+            const apiBaseUrl = document.getElementById('apiBaseUrl').value.trim();
+
+            if (!ipaUrl || !bundleId || !version || !appName || !apiBaseUrl) {
+                return "";
+            }
+
+            // 1. APIへのクエリパラメータを作成
+            const params = new URLSearchParams({
+                ipaUrl: ipaUrl,
+                bundleId: bundleId,
+                version: version,
+                appName: appName
+            });
+
+            // 2. APIのフルURL (動的PLISTを返すURL)
+            const plistApiUrl = `${apiBaseUrl}?${params.toString()}`;
+            
+            // 3. itms-services リンクを構築
+            const fullInstallUrl = `itms-services://?action=download-manifest&url=${encodeURIComponent(plistApiUrl)}`;
+            
+            return fullInstallUrl;
+        }
+
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const generateButton = document.getElementById('generateButton');
+            const resultsSection = document.getElementById('resultsSection');
+            const finalInstallUrlOutput = document.getElementById('finalInstallUrlOutput');
+            const installLink = document.getElementById('installLink');
+
+
+            // 1. 生成ボタンのイベントリスナー
+            generateButton.addEventListener('click', () => {
+                const fullInstallUrl = generateInstallLink();
+
+                if (fullInstallUrl === "") {
+                    // 全て必須項目なので、空の場合はエラーとして処理
+                    console.error('全ての項目を入力してください。');
+                    return;
+                }
+                
+                // 結果セクションを表示
+                resultsSection.classList.remove('hidden');
+
+                // リンクを更新
+                finalInstallUrlOutput.value = fullInstallUrl;
+                installLink.href = fullInstallUrl;
+
+                // 実行ボタンの色を有効化
+                installLink.classList.remove('bg-red-600');
+                installLink.classList.add('bg-indigo-600');
+
+            });
+
+            // 2. コピーボタンのセットアップ
+            setupCopyButton('copyInstallUrlButton', 'finalInstallUrlOutput', 'copyInstallUrlMessage');
+
+            // 初期ロード時のリンク生成 (デモ値を使用)
+            generateButton.click();
+        });
+    </script>
+</body>
+</html>
