@@ -56,50 +56,65 @@
             window.app = initializeApp(firebaseConfig);
             window.db = getFirestore(window.app);
             window.auth = getAuth(window.app);
-        } else {
-            console.error("Firebase config is missing. Database functionality will not work.");
-        }
-
-
-        // 認証処理
-        async function authenticate() {
-            if (!window.auth) return;
-            try {
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(window.auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(window.auth);
-                }
-            } catch (error) {
-                console.error("Firebase Auth error, falling back to anonymous sign-in:", error.code, error.message);
-                try {
-                    await signInAnonymously(window.auth);
-                } catch(e) {
-                    console.error("Failed to sign in anonymously:", e);
-                }
-            }
-        }
-
-        onAuthStateChanged(window.auth, (user) => {
-            if (user) {
-                window.userId = user.uid;
-            } else {
-                // ユーザーがいない場合、ユニークなランダムIDをフォールバックとして使用
-                window.userId = crypto.randomUUID();
-            }
-            window.isAuthReady = true;
-            console.log("Auth State Changed. User ID:", window.userId);
-
-            const generateButton = document.getElementById('generateButton');
-            generateButton.disabled = false;
-            generateButton.innerHTML = 'インストールリンクを生成';
             
-            // 認証完了後、デモ値で一度実行
-            window.generateButton.click();
-        });
+            // 認証処理
+            async function authenticate() {
+                if (!window.auth) return;
+                try {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(window.auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(window.auth);
+                    }
+                } catch (error) {
+                    console.error("Firebase Auth error, falling back to anonymous sign-in:", error.code, error.message);
+                    try {
+                        await signInAnonymously(window.auth);
+                    } catch(e) {
+                        console.error("Failed to sign in anonymously:", e);
+                    }
+                }
+            }
 
-        if (window.auth) {
+            onAuthStateChanged(window.auth, (user) => {
+                if (user) {
+                    window.userId = user.uid;
+                } else {
+                    // ユーザーがいない場合、ユニークなランダムIDをフォールバックとして使用
+                    window.userId = crypto.randomUUID();
+                }
+                window.isAuthReady = true;
+                console.log("Auth State Changed. User ID:", window.userId);
+
+                const generateButton = document.getElementById('generateButton');
+                generateButton.disabled = false;
+                generateButton.innerHTML = 'インストールリンクを生成';
+                
+                // 認証完了後、デモ値で一度実行
+                window.generateButton.click();
+            });
+
             authenticate();
+        } else {
+            console.warn("Firebase config is missing. Using local-only mode without database functionality.");
+            // Firebase未設定の場合は即座にローカルIDで準備完了とする
+            window.userId = crypto.randomUUID();
+            window.isAuthReady = true;
+            console.log("Local Mode - User ID:", window.userId);
+            
+            // UI更新を次のティックで実行
+            setTimeout(() => {
+                const generateButton = document.getElementById('generateButton');
+                if (generateButton) {
+                    generateButton.disabled = false;
+                    generateButton.innerHTML = 'インストールリンクを生成';
+                }
+                
+                const userIdDisplay = document.getElementById('userIdDisplay');
+                if (userIdDisplay) {
+                    userIdDisplay.textContent = `UserID: ${window.userId} (ローカルモード)`;
+                }
+            }, 100);
         }
 
 
